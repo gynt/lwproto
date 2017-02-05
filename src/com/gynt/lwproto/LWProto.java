@@ -164,13 +164,13 @@ public abstract class LWProto {
 				int length = Array.getLength(obj);
 				for (int i = 0; i < length; i++) {
 					Object arrayElement = Array.get(obj, i);
-					if (map.containsKey(arrayElement.getClass())) {
+					if (map.containsKey(type.getComponentType())) {
 						@SuppressWarnings("unchecked")
-						byte[] data = map.get(arrayElement.getClass()).serialize(arrayElement);
+						byte[] data = map.get(type.getComponentType()).serialize(arrayElement);
 						datas.add(data);
 						size += data.length;
 					} else {
-						throw new RuntimeException("Unsupported class: " + arrayElement.getClass().getName());
+						throw new RuntimeException("Unsupported class: " + type.getComponentType().getName());
 					}
 				}
 
