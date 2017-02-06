@@ -4,11 +4,16 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.reflect.Array;
 import java.lang.reflect.Field;
+import java.lang.reflect.ParameterizedType;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
+import java.util.AbstractList;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedList;
+import java.util.List;
 import java.util.Queue;
 
 public abstract class LWProto {
@@ -155,7 +160,7 @@ public abstract class LWProto {
 			return null;
 		}
 
-		private byte[] serializeArray(T obj) {
+		protected byte[] serializeArray(T obj) {
 			try {
 				ArrayList<byte[]> datas = new ArrayList<>();
 
@@ -230,7 +235,7 @@ public abstract class LWProto {
 			return null;
 		}
 
-		private T deserializeArray(byte[] data) {
+		protected T deserializeArray(byte[] data) {
 			try {
 				ByteBuffer b = ByteBuffer.wrap(data);
 				int length = b.getInt();
@@ -257,5 +262,45 @@ public abstract class LWProto {
 			}
 			return null;
 		}
+	}
+
+	public static class CollectionSerializer<T extends List> extends Serializer<T> {
+
+		private Class<?> innertype;
+
+		public CollectionSerializer(Class<? extends List> c, Class<?> t) {
+			super(c);
+			innertype = t;
+		}
+
+		@Override
+		public byte[] serialize(T obj) {
+			if (map.containsKey(Array.newInstance(innertype, 0).getClass())) {
+				return map.get(Array.newInstance(innertype, 0).getClass()).serialize(obj.toArray());
+			} else {
+				throw new RuntimeException(
+						"Unsupported class: " + Array.newInstance(innertype, 0).getClass().getName());
+			}
+		}
+
+		@Override
+		public T deserialize(byte[] data) {
+			try {
+				if (map.containsKey(Array.newInstance(innertype, 0).getClass())) {
+					List l = (List) type.newInstance();
+					for (Object o : (Object[]) map.get(Array.newInstance(innertype, 0).getClass()).deserialize(data)) {
+						l.add(o);
+					}
+					return (T) l;
+				} else {
+					throw new RuntimeException(
+							"Unsupported class: " + Array.newInstance(innertype, 0).getClass().getClass().getName());
+				}
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+			return null;
+		}
+
 	}
 }

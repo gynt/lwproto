@@ -1,6 +1,10 @@
 package com.gynt.lwproto.examples;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import com.gynt.lwproto.LWProto;
+import com.gynt.lwproto.LWProto.CollectionSerializer;
 import com.gynt.lwproto.LWProto.Serializer;
 import com.gynt.lwproto.LWProto.lwproto;
 
@@ -44,6 +48,17 @@ public class Example {
 		e2.name = "bar";
 		Example[] es = new Example[] { e1, e2 };
 		System.out.println(q.deserialize(q.serialize(es)).length);
+
+		List<Example> l = new ArrayList<>();
+		l.add(new Example());
+		Example ee = new Example();
+		ee.name="Bye World!";
+		l.add(ee);
+
+		LWProto.register(Example[].class, new Serializer<Example[]>(Example[].class));
+		CollectionSerializer<List> c = new LWProto.CollectionSerializer<List>(ArrayList.class, Example.class);
+		c.serialize(l);
+		System.out.println(((Example)c.deserialize(c.serialize(l)).get(1)).name);
 	}
 
 }
