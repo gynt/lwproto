@@ -16,6 +16,8 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Queue;
 
+import com.gynt.lwproto.LWProto.AbstractSerializer;
+
 public abstract class LWProto {
 
 	@Retention(RetentionPolicy.RUNTIME)
@@ -69,6 +71,20 @@ public abstract class LWProto {
 
 		});
 		map.put(Integer.class, map.get(int.class));
+		LWProto.register(long.class, new AbstractSerializer<Long>(long.class) {
+
+			@Override
+			public Long deserialize(byte[] data) {
+				return ByteBuffer.wrap(data).getLong();
+			}
+
+			@Override
+			public byte[] serialize(Long obj) {
+				return ByteBuffer.allocate(Long.BYTES).putLong(obj).array();
+			}
+
+		});
+		LWProto.register(Long.class, LWProto.retrieve(long.class));
 	}
 
 	@SuppressWarnings("unchecked")
