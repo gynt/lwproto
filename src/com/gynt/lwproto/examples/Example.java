@@ -1,12 +1,10 @@
 package com.gynt.lwproto.examples;
 
-import java.util.AbstractList;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.List;
+import java.util.HashMap;
 
 import com.gynt.lwproto.LWProto;
-import com.gynt.lwproto.LWProto.CollectionSerializer;
 import com.gynt.lwproto.LWProto.Serializer;
 import com.gynt.lwproto.LWProto.lwproto;
 
@@ -20,6 +18,13 @@ public class Example {
 
 	@lwproto
 	public ArrayList<String> list = new ArrayList<>(Arrays.asList("a","b","c"));
+	
+	@lwproto
+	public HashMap<String, Integer> map = new HashMap<String, Integer>();
+	{
+		map.put("example1", 1);
+		map.put("example2", 2);
+	}
 
 	public static class AnotherExample {
 		public int VERSION = 4;
@@ -31,13 +36,14 @@ public class Example {
 		public int age = 90;
 	}
 
-	public static void main(String[] args) {
+	public static void main(String[] args) throws InstantiationException, IllegalAccessException, IllegalArgumentException, NoSuchFieldException, SecurityException {
 
 		Serializer<Example> s = new Serializer<Example>(Example.class);
 
 		Example e = new Example();
 		System.out.println(s.deserialize(s.serialize(e)).name);
 		System.out.println(s.deserialize(s.serialize(e)).list.toString());
+		System.out.println(s.deserialize(s.serialize(e)).map.toString());
 
 		LWProto.register(Example.class, s);
 		Serializer<Example[]> q = new Serializer<Example[]>(Example[].class);

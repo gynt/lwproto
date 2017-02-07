@@ -7,16 +7,13 @@ import java.lang.reflect.Field;
 import java.lang.reflect.ParameterizedType;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
-import java.util.AbstractList;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedList;
-import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Queue;
-
-import com.gynt.lwproto.LWProto.AbstractSerializer;
 
 public abstract class LWProto {
 
@@ -35,45 +32,35 @@ public abstract class LWProto {
 			type = c;
 		}
 
-		public byte[] serializeField(Field f, T obj) {
+		public byte[] serializeField(Field f, T obj)
+				throws IllegalArgumentException, IllegalAccessException, NoSuchFieldException, SecurityException, InstantiationException {
 			if (map.containsKey(f.getType())) {
-				try {
-					@SuppressWarnings("unchecked")
-					byte[] data = map.get(f.getType()).serialize(f.get(obj));
-					return data;
-				} catch (IllegalArgumentException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				} catch (IllegalAccessException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				}
-			} else {
-				throw new RuntimeException("Unsupported class: " + f.getType().getName());
-			}
-			return null;
-		};
 
-		public void deserializeField(Field f, T obj, byte[] data) {
-			if (map.containsKey(f.getType())) {
-				try {
-					f.set(obj, map.get(f.getType()).deserialize(data));
-					return;
-				} catch (IllegalArgumentException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				} catch (IllegalAccessException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				}
+				@SuppressWarnings("unchecked")
+				byte[] data = map.get(f.getType()).serialize(f.get(obj));
+				return data;
+
 			} else {
 				throw new RuntimeException("Unsupported class: " + f.getType().getName());
 			}
 		};
 
-		public abstract T deserialize(byte[] data);
+		public void deserializeField(Field f, T obj, byte[] data)
+				throws IllegalArgumentException, IllegalAccessException, InstantiationException {
+			if (map.containsKey(f.getType())) {
 
-		public abstract byte[] serialize(T obj);
+				f.set(obj, map.get(f.getType()).deserialize(data));
+				return;
+
+			} else {
+				throw new RuntimeException("Unsupported class: " + f.getType().getName());
+			}
+		};
+
+		public abstract T deserialize(byte[] data) throws InstantiationException, IllegalAccessException;
+
+		public abstract byte[] serialize(T obj)
+				throws IllegalArgumentException, IllegalAccessException, NoSuchFieldException, SecurityException, InstantiationException;
 
 	}
 
@@ -102,7 +89,7 @@ public abstract class LWProto {
 
 			@Override
 			public byte[] serialize(Integer obj) {
-				return ByteBuffer.allocate(4).putInt(obj).array();
+				return ByteBuffer.allocate(Integer.BYTES).putInt(obj).array();
 			}
 
 		});
@@ -121,7 +108,51 @@ public abstract class LWProto {
 
 		});
 		LWProto.register(Long.class, LWProto.retrieve(long.class));
-		map.put(String[].class, new Serializer<String[]>(String[].class));
+		LWProto.register(double.class, new AbstractSerializer<Double>(double.class) {
+
+			@Override
+			public Double deserialize(byte[] data) throws InstantiationException, IllegalAccessException {
+				return ByteBuffer.wrap(data).getDouble();
+			}
+
+			@Override
+			public byte[] serialize(Double obj)
+					throws IllegalArgumentException, IllegalAccessException, NoSuchFieldException, SecurityException {
+				return ByteBuffer.allocate(Double.BYTES).putDouble(obj).array();
+			}
+			
+		});
+		LWProto.register(Double.class, LWProto.retrieve(double.class));
+		LWProto.register(float.class, new AbstractSerializer<Float>(float.class) {
+
+			@Override
+			public Float deserialize(byte[] data) throws InstantiationException, IllegalAccessException {
+				return ByteBuffer.wrap(data).getFloat();
+			}
+
+			@Override
+			public byte[] serialize(Float obj)
+					throws IllegalArgumentException, IllegalAccessException, NoSuchFieldException, SecurityException {
+				return ByteBuffer.allocate(Float.BYTES).putFloat(obj).array();
+			}
+			
+		});
+		LWProto.register(Float.class, LWProto.retrieve(float.class));
+		LWProto.register(byte.class, new AbstractSerializer<Byte>(byte.class) {
+
+			@Override
+			public Byte deserialize(byte[] data) throws InstantiationException, IllegalAccessException {
+				return ByteBuffer.wrap(data).get();
+			}
+
+			@Override
+			public byte[] serialize(Byte obj)
+					throws IllegalArgumentException, IllegalAccessException, NoSuchFieldException, SecurityException {
+				return ByteBuffer.allocate(Byte.BYTES).put(obj).array();
+			}
+			
+		});
+		LWProto.register(Float.class, LWProto.retrieve(float.class));
 	}
 
 	@SuppressWarnings("unchecked")
@@ -167,268 +198,270 @@ public abstract class LWProto {
 			fields = temp.toArray(new Field[0]);
 		}
 
+		public static <T> T[] toArray(Collection<T> list, Class<?> innertype) {
+			@SuppressWarnings("unchecked")
+			T[] toR = (T[]) java.lang.reflect.Array.newInstance(innertype, list.size());
+			int i = 0;
+			for (T o : list) {
+				toR[i] = o;
+				i++;
+			}
+			return toR;
+		}
+
+		@SuppressWarnings({ "unchecked", "rawtypes" })
 		@Override
-		public byte[] serializeField(Field f, T obj) {
-			if(Collection.class.isAssignableFrom(f.getType())) {
+		public byte[] serializeField(Field f, T obj)
+				throws IllegalArgumentException, IllegalAccessException, NoSuchFieldException, SecurityException, InstantiationException {
+			if (Collection.class.isAssignableFrom(f.getType())) {
 				ParameterizedType p = (ParameterizedType) f.getGenericType();
 				Class<?> innertype = (Class<?>) p.getActualTypeArguments()[0];
-				if (map.containsKey(Array.newInstance(innertype, 0).getClass())) {
-					try {
-						return map.get(Array.newInstance(innertype, 0).getClass()).serialize(((Collection) f.get(obj)).toArray());
-					} catch (NegativeArraySizeException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					} catch (IllegalArgumentException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					} catch (IllegalAccessException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					}
-				} else {
-					throw new RuntimeException(
-							"Unsupported class: " + Array.newInstance((Class<?>) p.getActualTypeArguments()[0], 0).getClass().getName());
-				}
+				return serializeArray(toArray((Collection) f.get(obj), innertype), innertype);
+			} else if(Map.class.isAssignableFrom(f.getType())) {
+				ParameterizedType p = (ParameterizedType) f.getGenericType();
+				return serializeMap((Map) f.get(obj), (Class<?>) p.getActualTypeArguments()[0], (Class<?>) p.getActualTypeArguments()[1]);
+			} else if (f.getType().isArray()) {
+
+				return serializeArray(f.get(obj), f.getType().getComponentType());
+
 			} else if (map.containsKey(f.getType())) {
-				try {
+				byte[] data = map.get(f.getType()).serialize(f.get(obj));
+				return data;
+
+			} else {
+				throw new RuntimeException("Unsupported class: " + f.getType().getName());
+			}
+		}
+
+		@SuppressWarnings({ "unchecked", "rawtypes" })
+		@Override
+		public void deserializeField(Field f, T obj, byte[] data)
+				throws InstantiationException, IllegalAccessException {
+			if (Collection.class.isAssignableFrom(f.getType())) {
+				ParameterizedType p = (ParameterizedType) f.getGenericType();
+				Class<?> innertype = (Class<?>) p.getActualTypeArguments()[0];
+				deserializeArray(data, innertype);
+			} else if(Map.class.isAssignableFrom(f.getType())) {
+				ParameterizedType p = (ParameterizedType) f.getGenericType();
+				deserializeMap(data, (Class<Map>) f.getType(), (Class<?>) p.getActualTypeArguments()[0], (Class<?>) p.getActualTypeArguments()[1]);
+			} else if (f.getType().isArray()) {
+				deserializeArray(data, f.getType().getComponentType());
+			} else if (map.containsKey(f.getType())) {
+
+				f.set(obj, map.get(f.getType()).deserialize(data));
+				return;
+
+			} else {
+				throw new RuntimeException("Unsupported class: " + f.getType().getName());
+			}
+		}
+
+		@Override
+		public byte[] serialize(T obj)
+				throws IllegalArgumentException, IllegalAccessException, NoSuchFieldException, SecurityException, InstantiationException {
+			if (type.isArray())
+				return serializeArray(obj);
+			ArrayList<byte[]> datas = new ArrayList<>();
+
+			int size = 0;
+			int version = 0;
+			if (hasversion) {
+				version = type.getDeclaredField("VERSION").getInt(obj);
+			}
+
+			for (Field f : fields) {
+				lwproto anno = f.getDeclaredAnnotation(lwproto.class);
+				if (version < anno.from() || version > anno.until())
+					continue;
+
+				byte[] data = serializeField(f, obj);
+				datas.add(data);
+				size += data.length;
+			}
+
+			if (size == 0)
+				throw new RuntimeException("Nothing has been serialized");
+
+			ByteBuffer b = ByteBuffer.allocate(4 + size + (4 * datas.size()));
+			b.putInt(version);
+			for (byte[] data : datas) {
+				b.putInt(data.length);
+				b.put(data);
+			}
+
+			return b.array();
+
+		}
+
+		@Override
+		public T deserialize(byte[] data) throws InstantiationException, IllegalAccessException {
+
+			if (type.isArray())
+				return deserializeArray(data);
+			@SuppressWarnings("unchecked")
+			T t = (T) type.newInstance();
+
+			Queue<byte[]> datas = new LinkedList<>();
+			ByteBuffer b = ByteBuffer.wrap(data);
+			int version = b.getInt();
+			while (b.hasRemaining()) {
+				int size = b.getInt();
+				byte[] d = new byte[size];
+				b.get(d);
+				datas.offer(d);
+			}
+
+			for (Field f : fields) {
+				lwproto anno = f.getDeclaredAnnotation(lwproto.class);
+				if (version < anno.from() || version > anno.until())
+					continue;
+				deserializeField(f, t, datas.poll());
+			}
+
+			return t;
+
+		}
+		
+		public static <K,V> byte[] serializeMap(Map<K,V> obj, Class<K> componenttype1, Class<V> componenttype2) throws InstantiationException, IllegalAccessException, IllegalArgumentException, NoSuchFieldException, SecurityException {
+			if (!map.containsKey(componenttype1)) {
+				throw new RuntimeException("Unsupported class: " + componenttype1.getName());
+			} else if(!map.containsKey(componenttype2)) {
+				throw new RuntimeException("Unsupported class: " + componenttype2.getName());
+			}
+			int length = obj.size();
+			int size = 0;
+			ArrayList<byte[]> datas = new ArrayList<byte[]>();
+			for(Entry<K,V> entry : obj.entrySet()) {
+				@SuppressWarnings("unchecked")
+				byte[] data1 = map.get(componenttype1).serialize(entry.getKey());
+				@SuppressWarnings("unchecked")
+				byte[] data2 = map.get(componenttype2).serialize(entry.getValue());
+				size+=data1.length+data2.length;
+				datas.add(data1);
+				datas.add(data2);
+			}
+			ByteBuffer b = ByteBuffer.allocate(4+size+(4*datas.size()));
+			b.putInt(length);
+			for (byte[] data : datas) {
+				b.putInt(data.length);
+				b.put(data);
+			}
+			return b.array();
+		}
+		
+		public static <K,V> Map<K, V> deserializeMap(byte[] data, @SuppressWarnings("rawtypes") Class<Map> class1, Class<?> class2, Class<?> class3) throws InstantiationException, IllegalAccessException {
+			if (!map.containsKey(class2)) {
+				throw new RuntimeException("Unsupported class: " + class2.getName());
+			} else if(!map.containsKey(class3)) {
+				throw new RuntimeException("Unsupported class: " + class3.getName());
+			}
+			ByteBuffer b = ByteBuffer.wrap(data);
+			int length = b.getInt(); //Amount of entries
+			ArrayList<Entry<K,V>> entries = new ArrayList<>();
+			int i = 0;
+			while (i < length) {
+
+				byte[] c1 = new byte[b.getInt()];
+				b.get(c1);
+				byte[] c2 = new byte[b.getInt()];
+				b.get(c2);
+				entries.add(new Entry<K, V>() {
+
 					@SuppressWarnings("unchecked")
-					byte[] data = map.get(f.getType()).serialize(f.get(obj));
-					return data;
-				} catch (IllegalArgumentException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				} catch (IllegalAccessException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				}
-			} else {
-				throw new RuntimeException("Unsupported class: " + f.getType().getName());
-			}
-			return null;
-		}
+					K key = (K) map.get(class2).deserialize(c1);
+					@SuppressWarnings("unchecked")
+					V value = (V) map.get(class3).deserialize(c2);
 
-
-		@Override
-		public void deserializeField(Field f, T obj, byte[] data) {
-			if(Collection.class.isAssignableFrom(f.getType())) {
-				ParameterizedType p = (ParameterizedType) f.getGenericType();
-				Class<?> innertype = (Class<?>) p.getActualTypeArguments()[0];
-				if (map.containsKey(Array.newInstance(innertype, 0).getClass())) {
-
-					try {
-						List l = (List) f.getType().newInstance();
-						for (Object o : (Object[]) map.get(Array.newInstance(innertype, 0).getClass()).deserialize(data)) {
-							l.add(o);
-						}
-						f.set(obj, l);
-						return;
-					} catch (InstantiationException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					} catch (IllegalAccessException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
+					@Override
+					public K getKey() {
+						return key;
 					}
 
-				} else {
-					throw new RuntimeException(
-							"Unsupported class: " + Array.newInstance(innertype, 0).getClass().getClass().getName());
-				}
-			} else if (map.containsKey(f.getType())) {
-				try {
-					f.set(obj, map.get(f.getType()).deserialize(data));
-					return;
-				} catch (IllegalArgumentException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				} catch (IllegalAccessException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				}
-			} else {
-				throw new RuntimeException("Unsupported class: " + f.getType().getName());
+					@Override
+					public V getValue() {
+						return value;
+					}
+
+					@Override
+					public V setValue(V value) {
+						return null;
+					}
+				});
+
+				i++;
 			}
-			throw new RuntimeException("Something failed for: " + f.getType().getName());
+			@SuppressWarnings("unchecked")
+			Map<K,V> m = class1.newInstance();
+			for(Entry<K,V> entry : entries) {
+				m.put(entry.getKey(), entry.getValue());
+			}
+			return m;
 		}
 
-		@Override
-		public byte[] serialize(T obj) {
+		public static <T> byte[] serializeArray(T obj, Class<?> componenttype)
+				throws IllegalArgumentException, IllegalAccessException, NoSuchFieldException, SecurityException, InstantiationException {
+			ArrayList<byte[]> datas = new ArrayList<>();
 
-			try {
-				if (type.isArray())
-					return serializeArray(obj);
-				ArrayList<byte[]> datas = new ArrayList<>();
+			int size = 0;
 
-				int size = 0;
-				int version = 0;
-				if (hasversion) {
-					version = type.getDeclaredField("VERSION").getInt(obj);
-				}
-
-				for (Field f : fields) {
-					lwproto anno = f.getDeclaredAnnotation(lwproto.class);
-					if (version < anno.from() || version > anno.until())
-						continue;
-
-					byte[] data = serializeField(f,obj);
+			int length = Array.getLength(obj);
+			for (int i = 0; i < length; i++) {
+				Object arrayElement = Array.get(obj, i);
+				if (map.containsKey(componenttype)) {
+					@SuppressWarnings("unchecked")
+					byte[] data = map.get(componenttype).serialize(arrayElement);
 					datas.add(data);
-					size+=data.length;
-				}
-
-				if (size == 0)
-					throw new RuntimeException("Nothing has been serialized");
-
-				ByteBuffer b = ByteBuffer.allocate(4 + size + (4 * datas.size()));
-				b.putInt(version);
-				for (byte[] data : datas) {
-					b.putInt(data.length);
-					b.put(data);
-				}
-
-				return b.array();
-			} catch (Exception e) {
-				e.printStackTrace();
-			}
-			return null;
-		}
-
-		protected byte[] serializeArray(T obj) {
-			try {
-				ArrayList<byte[]> datas = new ArrayList<>();
-
-				int size = 0;
-
-				int length = Array.getLength(obj);
-				for (int i = 0; i < length; i++) {
-					Object arrayElement = Array.get(obj, i);
-					if (map.containsKey(type.getComponentType())) {
-						@SuppressWarnings("unchecked")
-						byte[] data = map.get(type.getComponentType()).serialize(arrayElement);
-						datas.add(data);
-						size += data.length;
-					} else {
-						throw new RuntimeException("Unsupported class: " + type.getComponentType().getName());
-					}
-				}
-
-				ByteBuffer b = ByteBuffer.allocate(4 + size + (4 * datas.size()));
-				b.putInt(length);
-				for (byte[] data : datas) {
-					b.putInt(data.length);
-					b.put(data);
-				}
-
-				return b.array();
-			} catch (Exception e) {
-				e.printStackTrace();
-			}
-			return null;
-		}
-
-		@Override
-		public T deserialize(byte[] data) {
-			try {
-				if (type.isArray())
-					return deserializeArray(data);
-				@SuppressWarnings("unchecked")
-				T t = (T) type.newInstance();
-
-				Queue<byte[]> datas = new LinkedList<>();
-				ByteBuffer b = ByteBuffer.wrap(data);
-				int version = b.getInt();
-				while (b.hasRemaining()) {
-					int size = b.getInt();
-					byte[] d = new byte[size];
-					b.get(d);
-					datas.offer(d);
-				}
-
-				for (Field f : fields) {
-					lwproto anno = f.getDeclaredAnnotation(lwproto.class);
-					if (version < anno.from() || version > anno.until())
-						continue;
-					deserializeField(f, t, datas.poll());
-				}
-
-				return t;
-			} catch (InstantiationException e) {
-				e.printStackTrace();
-			} catch (IllegalAccessException e) {
-				e.printStackTrace();
-			} catch (IllegalArgumentException e) {
-				e.printStackTrace();
-			} catch (SecurityException e) {
-				e.printStackTrace();
-			}
-			return null;
-		}
-
-		protected T deserializeArray(byte[] data) {
-			try {
-				ByteBuffer b = ByteBuffer.wrap(data);
-				int length = b.getInt();
-				@SuppressWarnings("unchecked")
-				T t = (T) Array.newInstance(type.getComponentType(), length);
-
-				int i = 0;
-				while (i < length) {
-					if (map.containsKey(type.getComponentType())) {
-						byte[] d = new byte[b.getInt()];
-						b.get(d);
-						Array.set(t, i, map.get(type.getComponentType()).deserialize(d));
-					} else {
-						throw new RuntimeException("Unsupported class: " + type.getComponentType().getName());
-					}
-					i++;
-				}
-
-				return t;
-			} catch (IllegalArgumentException e) {
-				e.printStackTrace();
-			} catch (SecurityException e) {
-				e.printStackTrace();
-			}
-			return null;
-		}
-
-	}
-
-	public static class CollectionSerializer<T extends List> extends Serializer<T> {
-
-		private Class<?> innertype;
-
-		public CollectionSerializer(Class<? extends List> c, Class<?> t) {
-			super(c);
-			innertype = t;
-		}
-
-		@Override
-		public byte[] serialize(T obj) {
-			if (map.containsKey(Array.newInstance(innertype, 0).getClass())) {
-				return map.get(Array.newInstance(innertype, 0).getClass()).serialize(obj.toArray());
-			} else {
-				throw new RuntimeException(
-						"Unsupported class: " + Array.newInstance(innertype, 0).getClass().getName());
-			}
-		}
-
-		@Override
-		public T deserialize(byte[] data) {
-			try {
-				if (map.containsKey(Array.newInstance(innertype, 0).getClass())) {
-					List l = (List) type.newInstance();
-					for (Object o : (Object[]) map.get(Array.newInstance(innertype, 0).getClass()).deserialize(data)) {
-						l.add(o);
-					}
-					return (T) l;
+					size += data.length;
 				} else {
-					throw new RuntimeException(
-							"Unsupported class: " + Array.newInstance(innertype, 0).getClass().getClass().getName());
+					throw new RuntimeException("Unsupported class: " + componenttype.getName());
 				}
-			} catch (Exception e) {
-				e.printStackTrace();
 			}
-			return null;
+
+			ByteBuffer b = ByteBuffer.allocate(4 + size + (4 * datas.size()));
+			b.putInt(length);
+			for (byte[] data : datas) {
+				b.putInt(data.length);
+				b.put(data);
+			}
+
+			return b.array();
+		}
+
+		protected byte[] serializeArray(T obj)
+				throws IllegalArgumentException, IllegalAccessException, NoSuchFieldException, SecurityException, InstantiationException {
+
+			return serializeArray(obj, type.getComponentType());
+
+		}
+
+		public static <T> T deserializeArray(byte[] data, Class<T> componenttype) throws ArrayIndexOutOfBoundsException,
+				IllegalArgumentException, InstantiationException, IllegalAccessException {
+			ByteBuffer b = ByteBuffer.wrap(data);
+			int length = b.getInt();
+			@SuppressWarnings("unchecked")
+			T t = (T) Array.newInstance(componenttype, length);
+
+			int i = 0;
+			while (i < length) {
+				if (map.containsKey(componenttype)) {
+					byte[] d = new byte[b.getInt()];
+					b.get(d);
+					Array.set(t, i, map.get(componenttype).deserialize(d));
+				} else {
+					throw new RuntimeException("Unsupported class: " + componenttype.getName());
+				}
+				i++;
+			}
+
+			return t;
+		}
+
+		@SuppressWarnings("unchecked")
+		protected T deserializeArray(byte[] data)
+				throws ArrayIndexOutOfBoundsException, InstantiationException, IllegalAccessException {
+
+			return (T) deserializeArray(data, type.getComponentType());
+
 		}
 
 	}
