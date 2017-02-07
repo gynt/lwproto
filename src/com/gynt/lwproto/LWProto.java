@@ -121,7 +121,7 @@ public abstract class LWProto {
 					throws IllegalArgumentException, IllegalAccessException, NoSuchFieldException, SecurityException {
 				return ByteBuffer.allocate(Double.BYTES).putDouble(obj).array();
 			}
-			
+
 		});
 		LWProto.register(Double.class, LWProto.retrieve(double.class));
 		LWProto.register(float.class, new AbstractSerializer<Float>(float.class) {
@@ -136,7 +136,7 @@ public abstract class LWProto {
 					throws IllegalArgumentException, IllegalAccessException, NoSuchFieldException, SecurityException {
 				return ByteBuffer.allocate(Float.BYTES).putFloat(obj).array();
 			}
-			
+
 		});
 		LWProto.register(Float.class, LWProto.retrieve(float.class));
 		LWProto.register(byte.class, new AbstractSerializer<Byte>(byte.class) {
@@ -151,7 +151,7 @@ public abstract class LWProto {
 					throws IllegalArgumentException, IllegalAccessException, NoSuchFieldException, SecurityException {
 				return ByteBuffer.allocate(Byte.BYTES).put(obj).array();
 			}
-			
+
 		});
 		LWProto.register(Float.class, LWProto.retrieve(float.class));
 	}
@@ -241,12 +241,16 @@ public abstract class LWProto {
 			if (Collection.class.isAssignableFrom(f.getType())) {
 				ParameterizedType p = (ParameterizedType) f.getGenericType();
 				Class<?> innertype = (Class<?>) p.getActualTypeArguments()[0];
-				deserializeArray(data, innertype);
+				Collection list = (Collection) f.getType().newInstance();
+				for(Object o: (Object[]) deserializeArray(data, innertype)) {
+					list.add(o);
+				}
+				f.set(obj, list);
 			} else if(Map.class.isAssignableFrom(f.getType())) {
 				ParameterizedType p = (ParameterizedType) f.getGenericType();
-				deserializeMap(data, (Class<Map>) f.getType(), (Class<?>) p.getActualTypeArguments()[0], (Class<?>) p.getActualTypeArguments()[1]);
+				f.set(obj, deserializeMap(data, (Class<Map>) f.getType(), (Class<?>) p.getActualTypeArguments()[0], (Class<?>) p.getActualTypeArguments()[1]));
 			} else if (f.getType().isArray()) {
-				deserializeArray(data, f.getType().getComponentType());
+				f.set(obj, deserializeArray(data, f.getType().getComponentType()));
 			} else if (map.containsKey(f.getType())) {
 
 				f.set(obj, map.get(f.getType()).deserialize(data));
@@ -322,7 +326,7 @@ public abstract class LWProto {
 			return t;
 
 		}
-		
+
 		public static <K,V> byte[] serializeMap(Map<K,V> obj, Class<K> componenttype1, Class<V> componenttype2) throws InstantiationException, IllegalAccessException, IllegalArgumentException, NoSuchFieldException, SecurityException {
 			if (!map.containsKey(componenttype1)) {
 				throw new RuntimeException("Unsupported class: " + componenttype1.getName());
@@ -349,7 +353,7 @@ public abstract class LWProto {
 			}
 			return b.array();
 		}
-		
+
 		public static <K,V> Map<K, V> deserializeMap(byte[] data, @SuppressWarnings("rawtypes") Class<Map> class1, Class<?> class2, Class<?> class3) throws InstantiationException, IllegalAccessException {
 			if (!map.containsKey(class2)) {
 				throw new RuntimeException("Unsupported class: " + class2.getName());
