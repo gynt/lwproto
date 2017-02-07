@@ -316,6 +316,8 @@ public abstract class LWProto {
 				datas.offer(d);
 			}
 
+			System.out.println(datas.size());
+
 			for (Field f : fields) {
 				lwproto anno = f.getDeclaredAnnotation(lwproto.class);
 				if (version < anno.from() || version > anno.until())
