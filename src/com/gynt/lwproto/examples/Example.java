@@ -1,6 +1,8 @@
 package com.gynt.lwproto.examples;
 
+import java.util.AbstractList;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import com.gynt.lwproto.LWProto;
@@ -16,6 +18,9 @@ public class Example {
 	@lwproto
 	public int age = 100;
 
+	@lwproto
+	public ArrayList<String> list = new ArrayList<>(Arrays.asList("a","b","c"));
+
 	public static class AnotherExample {
 		public int VERSION = 4;
 
@@ -27,18 +32,12 @@ public class Example {
 	}
 
 	public static void main(String[] args) {
-		Serializer<String[]> ss = new Serializer<String[]>(String[].class);
-
-		String[] sss = new String[] { "a", "bc", "def" };
-		ss.serialize(sss);
-		System.out.println(ss.deserialize(ss.serialize(sss)).length);
 
 		Serializer<Example> s = new Serializer<Example>(Example.class);
 
 		Example e = new Example();
-
-		System.out.println(new String(s.serialize(e)));
 		System.out.println(s.deserialize(s.serialize(e)).name);
+		System.out.println(s.deserialize(s.serialize(e)).list.toString());
 
 		LWProto.register(Example.class, s);
 		Serializer<Example[]> q = new Serializer<Example[]>(Example[].class);
@@ -48,17 +47,6 @@ public class Example {
 		e2.name = "bar";
 		Example[] es = new Example[] { e1, e2 };
 		System.out.println(q.deserialize(q.serialize(es)).length);
-
-		List<Example> l = new ArrayList<>();
-		l.add(new Example());
-		Example ee = new Example();
-		ee.name="Bye World!";
-		l.add(ee);
-
-		LWProto.register(Example[].class, new Serializer<Example[]>(Example[].class));
-		CollectionSerializer<List> c = new LWProto.CollectionSerializer<List>(ArrayList.class, Example.class);
-		c.serialize(l);
-		System.out.println(((Example)c.deserialize(c.serialize(l)).get(1)).name);
 	}
 
 }

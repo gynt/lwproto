@@ -35,6 +35,42 @@ public abstract class LWProto {
 			type = c;
 		}
 
+		public byte[] serializeField(Field f, T obj) {
+			if (map.containsKey(f.getType())) {
+				try {
+					@SuppressWarnings("unchecked")
+					byte[] data = map.get(f.getType()).serialize(f.get(obj));
+					return data;
+				} catch (IllegalArgumentException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				} catch (IllegalAccessException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+			} else {
+				throw new RuntimeException("Unsupported class: " + f.getType().getName());
+			}
+			return null;
+		};
+
+		public void deserializeField(Field f, T obj, byte[] data) {
+			if (map.containsKey(f.getType())) {
+				try {
+					f.set(obj, map.get(f.getType()).deserialize(data));
+					return;
+				} catch (IllegalArgumentException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				} catch (IllegalAccessException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+			} else {
+				throw new RuntimeException("Unsupported class: " + f.getType().getName());
+			}
+		};
+
 		public abstract T deserialize(byte[] data);
 
 		public abstract byte[] serialize(T obj);
@@ -85,6 +121,7 @@ public abstract class LWProto {
 
 		});
 		LWProto.register(Long.class, LWProto.retrieve(long.class));
+		map.put(String[].class, new Serializer<String[]>(String[].class));
 	}
 
 	@SuppressWarnings("unchecked")
@@ -131,6 +168,90 @@ public abstract class LWProto {
 		}
 
 		@Override
+		public byte[] serializeField(Field f, T obj) {
+			if(Collection.class.isAssignableFrom(f.getType())) {
+				ParameterizedType p = (ParameterizedType) f.getGenericType();
+				Class<?> innertype = (Class<?>) p.getActualTypeArguments()[0];
+				if (map.containsKey(Array.newInstance(innertype, 0).getClass())) {
+					try {
+						return map.get(Array.newInstance(innertype, 0).getClass()).serialize(((Collection) f.get(obj)).toArray());
+					} catch (NegativeArraySizeException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					} catch (IllegalArgumentException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					} catch (IllegalAccessException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+				} else {
+					throw new RuntimeException(
+							"Unsupported class: " + Array.newInstance((Class<?>) p.getActualTypeArguments()[0], 0).getClass().getName());
+				}
+			} else if (map.containsKey(f.getType())) {
+				try {
+					@SuppressWarnings("unchecked")
+					byte[] data = map.get(f.getType()).serialize(f.get(obj));
+					return data;
+				} catch (IllegalArgumentException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				} catch (IllegalAccessException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+			} else {
+				throw new RuntimeException("Unsupported class: " + f.getType().getName());
+			}
+			return null;
+		}
+
+
+		@Override
+		public void deserializeField(Field f, T obj, byte[] data) {
+			if(Collection.class.isAssignableFrom(f.getType())) {
+				ParameterizedType p = (ParameterizedType) f.getGenericType();
+				Class<?> innertype = (Class<?>) p.getActualTypeArguments()[0];
+				if (map.containsKey(Array.newInstance(innertype, 0).getClass())) {
+
+					try {
+						List l = (List) f.getType().newInstance();
+						for (Object o : (Object[]) map.get(Array.newInstance(innertype, 0).getClass()).deserialize(data)) {
+							l.add(o);
+						}
+						f.set(obj, l);
+						return;
+					} catch (InstantiationException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					} catch (IllegalAccessException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+
+				} else {
+					throw new RuntimeException(
+							"Unsupported class: " + Array.newInstance(innertype, 0).getClass().getClass().getName());
+				}
+			} else if (map.containsKey(f.getType())) {
+				try {
+					f.set(obj, map.get(f.getType()).deserialize(data));
+					return;
+				} catch (IllegalArgumentException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				} catch (IllegalAccessException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+			} else {
+				throw new RuntimeException("Unsupported class: " + f.getType().getName());
+			}
+			throw new RuntimeException("Something failed for: " + f.getType().getName());
+		}
+
+		@Override
 		public byte[] serialize(T obj) {
 
 			try {
@@ -149,14 +270,9 @@ public abstract class LWProto {
 					if (version < anno.from() || version > anno.until())
 						continue;
 
-					if (map.containsKey(f.getType())) {
-						@SuppressWarnings("unchecked")
-						byte[] data = map.get(f.getType()).serialize(f.get(obj));
-						datas.add(data);
-						size += data.length;
-					} else {
-						throw new RuntimeException("Unsupported class: " + f.getType().getName());
-					}
+					byte[] data = serializeField(f,obj);
+					datas.add(data);
+					size+=data.length;
 				}
 
 				if (size == 0)
@@ -231,11 +347,7 @@ public abstract class LWProto {
 					lwproto anno = f.getDeclaredAnnotation(lwproto.class);
 					if (version < anno.from() || version > anno.until())
 						continue;
-					if (map.containsKey(f.getType())) {
-						f.set(t, map.get(f.getType()).deserialize(datas.poll()));
-					} else {
-						throw new RuntimeException("Unsupported class: " + f.getType().getName());
-					}
+					deserializeField(f, t, datas.poll());
 				}
 
 				return t;
@@ -278,6 +390,7 @@ public abstract class LWProto {
 			}
 			return null;
 		}
+
 	}
 
 	public static class CollectionSerializer<T extends List> extends Serializer<T> {
