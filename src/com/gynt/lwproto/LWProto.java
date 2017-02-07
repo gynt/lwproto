@@ -77,6 +77,7 @@ public abstract class LWProto {
 
 			@Override
 			public byte[] serialize(String obj) {
+				if(obj==null)obj="";
 				return obj.getBytes(Charset.forName("UTF-8"));
 			}
 		});
