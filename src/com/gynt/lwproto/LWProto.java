@@ -7,6 +7,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.ParameterizedType;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
+import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -46,7 +47,7 @@ public abstract class LWProto {
 		};
 
 		public void deserializeField(Field f, T obj, byte[] data)
-				throws IllegalArgumentException, IllegalAccessException, InstantiationException {
+				throws IllegalArgumentException, IllegalAccessException, InstantiationException, ParseException {
 			if (map.containsKey(f.getType())) {
 
 				f.set(obj, map.get(f.getType()).deserialize(data));
@@ -57,8 +58,12 @@ public abstract class LWProto {
 			}
 		};
 
-		public abstract T deserialize(byte[] data) throws InstantiationException, IllegalAccessException;
+		public abstract T deserialize(byte[] data) throws InstantiationException, IllegalAccessException, ParseException;
 
+		public T deserialize(ByteBuffer b) throws InstantiationException, IllegalAccessException, ParseException {
+			return deserialize(b.array());
+		}
+		
 		public abstract byte[] serialize(T obj)
 				throws IllegalArgumentException, IllegalAccessException, NoSuchFieldException, SecurityException, InstantiationException;
 
@@ -175,10 +180,11 @@ public abstract class LWProto {
 
 		private boolean hasversion;
 		private Field[] fields;
-
-		public Serializer(Class<?> c) {
+		private boolean annoenabled = true;
+		
+		public Serializer(Class<?> c, boolean anno) {
 			super(c);
-
+			annoenabled=anno;
 			hasversion = false;
 			try {
 				c.getDeclaredField("VERSION");
@@ -191,12 +197,16 @@ public abstract class LWProto {
 
 			ArrayList<Field> temp = new ArrayList<>();
 			for (Field f : c.getDeclaredFields()) {
-				if (f.getDeclaredAnnotation(lwproto.class) == null)
+				if (annoenabled && f.getDeclaredAnnotation(lwproto.class) == null)
 					continue;
 				f.setAccessible(true);
 				temp.add(f);
 			}
 			fields = temp.toArray(new Field[0]);
+		}
+
+		public Serializer(Class<?> c) {
+			this(c, true);
 		}
 
 		public static <T> T[] toArray(Collection<T> list, Class<?> innertype) {
@@ -237,7 +247,7 @@ public abstract class LWProto {
 		@SuppressWarnings({ "unchecked", "rawtypes" })
 		@Override
 		public void deserializeField(Field f, T obj, byte[] data)
-				throws InstantiationException, IllegalAccessException {
+				throws InstantiationException, IllegalAccessException, IllegalArgumentException, ParseException {
 			if (Collection.class.isAssignableFrom(f.getType())) {
 				ParameterizedType p = (ParameterizedType) f.getGenericType();
 				Class<?> innertype = (Class<?>) p.getActualTypeArguments()[0];
@@ -275,9 +285,11 @@ public abstract class LWProto {
 			}
 
 			for (Field f : fields) {
-				lwproto anno = f.getDeclaredAnnotation(lwproto.class);
-				if (version < anno.from() || version > anno.until())
-					continue;
+				if (annoenabled) {
+					lwproto anno = f.getDeclaredAnnotation(lwproto.class);
+					if (version < anno.from() || version > anno.until())
+						continue;
+				}
 
 				byte[] data = serializeField(f, obj);
 				datas.add(data);
@@ -297,9 +309,41 @@ public abstract class LWProto {
 			return b.array();
 
 		}
+		
 
 		@Override
-		public T deserialize(byte[] data) throws InstantiationException, IllegalAccessException {
+		public T deserialize(ByteBuffer b) throws InstantiationException, IllegalAccessException, IllegalArgumentException, ParseException {
+
+			if (type.isArray())
+				return deserializeArray(b);
+			@SuppressWarnings("unchecked")
+			T t = (T) type.newInstance();
+
+			Queue<byte[]> datas = new LinkedList<>();
+			
+			int version = b.getInt();
+			while (b.hasRemaining()) {
+				int size = b.getInt();
+				byte[] d = new byte[size];
+				b.get(d);
+				datas.offer(d);
+			}
+
+			for (Field f : fields) {
+				if (annoenabled) {
+					lwproto anno = f.getDeclaredAnnotation(lwproto.class);
+					if (version < anno.from() || version > anno.until())
+						continue;
+				}
+				deserializeField(f, t, datas.poll());
+			}
+
+			return t;
+
+		}
+
+		@Override
+		public T deserialize(byte[] data) throws InstantiationException, IllegalAccessException, IllegalArgumentException, ParseException {
 
 			if (type.isArray())
 				return deserializeArray(data);
@@ -317,9 +361,11 @@ public abstract class LWProto {
 			}
 
 			for (Field f : fields) {
-				lwproto anno = f.getDeclaredAnnotation(lwproto.class);
-				if (version < anno.from() || version > anno.until())
-					continue;
+				if (annoenabled) {
+					lwproto anno = f.getDeclaredAnnotation(lwproto.class);
+					if (version < anno.from() || version > anno.until())
+						continue;
+				}
 				deserializeField(f, t, datas.poll());
 			}
 
@@ -354,7 +400,7 @@ public abstract class LWProto {
 			return b.array();
 		}
 
-		public static <K,V> Map<K, V> deserializeMap(byte[] data, @SuppressWarnings("rawtypes") Class<Map> class1, Class<?> class2, Class<?> class3) throws InstantiationException, IllegalAccessException {
+		public static <K,V> Map<K, V> deserializeMap(byte[] data, @SuppressWarnings("rawtypes") Class<Map> class1, Class<?> class2, Class<?> class3) throws InstantiationException, IllegalAccessException, ParseException {
 			if (!map.containsKey(class2)) {
 				throw new RuntimeException("Unsupported class: " + class2.getName());
 			} else if(!map.containsKey(class3)) {
@@ -438,9 +484,31 @@ public abstract class LWProto {
 			return serializeArray(obj, type.getComponentType());
 
 		}
+		
+		public static <T> T deserializeArray(ByteBuffer b, Class<T> componenttype)
+				throws ArrayIndexOutOfBoundsException, IllegalArgumentException, InstantiationException,
+				IllegalAccessException, ParseException {
+			int length = b.getInt();
+			@SuppressWarnings("unchecked")
+			T t = (T) Array.newInstance(componenttype, length);
+
+			int i = 0;
+			while (i < length) {
+				if (map.containsKey(componenttype)) {
+					byte[] d = new byte[b.getInt()];
+					b.get(d);
+					Array.set(t, i, map.get(componenttype).deserialize(d));
+				} else {
+					throw new RuntimeException("Unsupported class: " + componenttype.getName());
+				}
+				i++;
+			}
+
+	return t;
+}
 
 		public static <T> T deserializeArray(byte[] data, Class<T> componenttype) throws ArrayIndexOutOfBoundsException,
-				IllegalArgumentException, InstantiationException, IllegalAccessException {
+				IllegalArgumentException, InstantiationException, IllegalAccessException, ParseException {
 			ByteBuffer b = ByteBuffer.wrap(data);
 			int length = b.getInt();
 			@SuppressWarnings("unchecked")
@@ -463,7 +531,15 @@ public abstract class LWProto {
 
 		@SuppressWarnings("unchecked")
 		protected T deserializeArray(byte[] data)
-				throws ArrayIndexOutOfBoundsException, InstantiationException, IllegalAccessException {
+				throws ArrayIndexOutOfBoundsException, InstantiationException, IllegalAccessException, IllegalArgumentException, ParseException {
+
+			return (T) deserializeArray(data, type.getComponentType());
+
+		}
+		
+		@SuppressWarnings("unchecked")
+		protected T deserializeArray(ByteBuffer data)
+				throws ArrayIndexOutOfBoundsException, InstantiationException, IllegalAccessException, IllegalArgumentException, ParseException {
 
 			return (T) deserializeArray(data, type.getComponentType());
 

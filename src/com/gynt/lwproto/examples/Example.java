@@ -1,5 +1,6 @@
 package com.gynt.lwproto.examples;
 
+import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -36,7 +37,7 @@ public class Example {
 		public int age = 90;
 	}
 
-	public static void main(String[] args) throws InstantiationException, IllegalAccessException, IllegalArgumentException, NoSuchFieldException, SecurityException {
+	public static void main(String[] args) throws InstantiationException, IllegalAccessException, IllegalArgumentException, NoSuchFieldException, SecurityException, ParseException {
 
 		Serializer<Example> s = new Serializer<Example>(Example.class);
 
