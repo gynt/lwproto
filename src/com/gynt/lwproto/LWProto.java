@@ -9,6 +9,7 @@ import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.text.ParseException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedList;
@@ -232,9 +233,12 @@ public abstract class LWProto {
 				ParameterizedType p = (ParameterizedType) f.getGenericType();
 				return serializeMap((Map) f.get(obj), (Class<?>) p.getActualTypeArguments()[0], (Class<?>) p.getActualTypeArguments()[1]);
 			} else if (f.getType().isArray()) {
-
+				if(f.get(obj)!=null) {
+					return serializeArray(f.get(obj), f.getType().getComponentType(), Array.getLength(f.get(obj)));
+				}
 				return serializeArray(f.get(obj), f.getType().getComponentType());
-
+			} else if(f.getType().isEnum()) {
+				return serializeEnum(f.get(obj),f.getType());
 			} else if (map.containsKey(f.getType())) {
 				byte[] data = map.get(f.getType()).serialize(f.get(obj));
 				return data;
@@ -242,6 +246,10 @@ public abstract class LWProto {
 			} else {
 				throw new RuntimeException("Unsupported class: " + f.getType().getName());
 			}
+		}
+		
+		public static <T> byte[] serializeEnum(T obj, Class<?> type) {
+			return ByteBuffer.allocate(4).putInt(Arrays.<Object>asList(type.getEnumConstants()).indexOf(obj)).array();
 		}
 
 		@SuppressWarnings({ "unchecked", "rawtypes" })
@@ -260,7 +268,12 @@ public abstract class LWProto {
 				ParameterizedType p = (ParameterizedType) f.getGenericType();
 				f.set(obj, deserializeMap(data, (Class<Map>) f.getType(), (Class<?>) p.getActualTypeArguments()[0], (Class<?>) p.getActualTypeArguments()[1]));
 			} else if (f.getType().isArray()) {
+				if(f.get(obj)!=null) {
+					f.set(obj, deserializeArray(data, f.getType().getComponentType(), Array.getLength(f.get(obj))));
+				}
 				f.set(obj, deserializeArray(data, f.getType().getComponentType()));
+			} else if(f.getType().isEnum()) {
+				f.set(obj, deserializeEnum(data, f.getType()));
 			} else if (map.containsKey(f.getType())) {
 
 				f.set(obj, map.get(f.getType()).deserialize(data));
@@ -269,6 +282,10 @@ public abstract class LWProto {
 			} else {
 				throw new RuntimeException("Unsupported class: " + f.getType().getName());
 			}
+		}
+		
+		public static <T> T deserializeEnum(byte[] data, Class<T> type) {
+			return type.getEnumConstants()[ByteBuffer.wrap(data).getInt()];
 		}
 
 		@Override
@@ -448,6 +465,34 @@ public abstract class LWProto {
 			}
 			return m;
 		}
+		
+		public static <T> byte[] serializeArray(T obj, Class<?> componenttype, int length)
+				throws IllegalArgumentException, IllegalAccessException, NoSuchFieldException, SecurityException, InstantiationException {
+			ArrayList<byte[]> datas = new ArrayList<>();
+
+			int size = 0;
+
+			for (int i = 0; i < length; i++) {
+				Object arrayElement = Array.get(obj, i);
+				if (map.containsKey(componenttype)) {
+					@SuppressWarnings("unchecked")
+					byte[] data = map.get(componenttype).serialize(arrayElement);
+					datas.add(data);
+					size += data.length;
+				} else {
+					throw new RuntimeException("Unsupported class: " + componenttype.getName());
+				}
+			}
+
+			ByteBuffer b = ByteBuffer.allocate(size + (4 * datas.size()));
+			
+			for (byte[] data : datas) {
+				b.putInt(data.length);
+				b.put(data);
+			}
+
+			return b.array();
+		}
 
 		public static <T> byte[] serializeArray(T obj, Class<?> componenttype)
 				throws IllegalArgumentException, IllegalAccessException, NoSuchFieldException, SecurityException, InstantiationException {
@@ -485,6 +530,28 @@ public abstract class LWProto {
 
 		}
 		
+		public static <T> T deserializeArray(ByteBuffer b, Class<T> componenttype, int length)
+				throws ArrayIndexOutOfBoundsException, IllegalArgumentException, InstantiationException,
+				IllegalAccessException, ParseException {
+			
+			@SuppressWarnings("unchecked")
+			T t = (T) Array.newInstance(componenttype, length);
+
+			int i = 0;
+			while (i < length) {
+				if (map.containsKey(componenttype)) {
+					byte[] d = new byte[b.getInt()];
+					b.get(d);
+					Array.set(t, i, map.get(componenttype).deserialize(d));
+				} else {
+					throw new RuntimeException("Unsupported class: " + componenttype.getName());
+				}
+				i++;
+			}
+
+	return t;
+}
+		
 		public static <T> T deserializeArray(ByteBuffer b, Class<T> componenttype)
 				throws ArrayIndexOutOfBoundsException, IllegalArgumentException, InstantiationException,
 				IllegalAccessException, ParseException {
@@ -506,6 +573,28 @@ public abstract class LWProto {
 
 	return t;
 }
+		
+		public static <T> T deserializeArray(byte[] data, Class<T> componenttype, int length) throws ArrayIndexOutOfBoundsException,
+				IllegalArgumentException, InstantiationException, IllegalAccessException, ParseException {
+			ByteBuffer b = ByteBuffer.wrap(data);
+			
+			@SuppressWarnings("unchecked")
+			T t = (T) Array.newInstance(componenttype, length);
+
+			int i = 0;
+			while (i < length) {
+				if (map.containsKey(componenttype)) {
+					byte[] d = new byte[b.getInt()];
+					b.get(d);
+					Array.set(t, i, map.get(componenttype).deserialize(d));
+				} else {
+					throw new RuntimeException("Unsupported class: " + componenttype.getName());
+				}
+				i++;
+			}
+
+			return t;
+		}
 
 		public static <T> T deserializeArray(byte[] data, Class<T> componenttype) throws ArrayIndexOutOfBoundsException,
 				IllegalArgumentException, InstantiationException, IllegalAccessException, ParseException {
